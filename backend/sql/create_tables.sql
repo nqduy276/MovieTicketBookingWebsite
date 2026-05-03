@@ -149,10 +149,21 @@ CREATE TABLE BOOKING_FANDB (
 );
 
 CREATE TABLE PROMOTION (
-    Code VARCHAR(50) PRIMARY KEY,
+	Promotion_ID INT AUTO_INCREMENT PRIMARY KEY,
+    -- Code VARCHAR(50) PRIMARY KEY,
+    Promotion_Name VARCHAR(255) NOT NULL,
+    Price INT,
     Discount_Value DECIMAL(10,2) NOT NULL,
     Expiration_Date DATE NOT NULL,
     CONSTRAINT CHK_Promo_Discount CHECK (Discount_Value >= 0)
+);
+
+CREATE TABLE PROMOTION_WALLET (
+    Code VARCHAR(50) PRIMARY KEY,
+    Promotion_ID INT NOT NULL, 
+    Owner_ID INT NOT NULL,
+    FOREIGN KEY (Promotion_ID) REFERENCES PROMOTION(Promotion_ID) ON DELETE CASCADE,
+    FOREIGN KEY (Owner_ID) REFERENCES CINEUSER(User_ID) ON DELETE CASCADE
 );
 
 CREATE TABLE BOOKING_PROMO (
@@ -160,7 +171,7 @@ CREATE TABLE BOOKING_PROMO (
     Code VARCHAR(50),
     PRIMARY KEY (Booking_ID, Code),
     FOREIGN KEY (Booking_ID) REFERENCES BOOKING(Booking_ID) ON DELETE CASCADE,
-    FOREIGN KEY (Code) REFERENCES PROMOTION(Code) ON DELETE CASCADE
+    FOREIGN KEY (Code) REFERENCES PROMOTION_WALLET(Code) ON DELETE CASCADE
 );
 
 -- ==========================================
@@ -168,7 +179,7 @@ CREATE TABLE BOOKING_PROMO (
 -- ==========================================
 -- INSERT INTO USER (Email, Password, First_Name, Last_Name)
 -- VALUES 
--- 
+-- ('chip@gmail.com', '123', 'DiepAnh', 'Nguyen'),
 -- ('duy@gmail.com', '123', 'QuocDuy', 'Nguyen');
 
 -- INSERT INTO CUSTOMER (User_ID, Date_of_Birth, Loyalty_Points)

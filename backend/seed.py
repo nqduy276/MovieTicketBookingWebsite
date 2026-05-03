@@ -12,7 +12,7 @@ Loads:
   * 4 F&B items.
   * Two promo codes (employee-only STAFF2026 and public WELCOME10).
 """
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 import random
 
 from sqlalchemy import text
@@ -23,7 +23,8 @@ from app.models.cinema import TheaterComplex, Auditorium
 from app.models.showtime import Showtime
 from app.models.seat import Seat
 from app.models.food import FandbItem
-from app.models.promo import Promotion
+from app.models.promo import Promotion, PromotionWallet
+from app.models.user import Customer, Staff
 
 
 
@@ -38,8 +39,6 @@ MOVIES = [
     ("Fast X", 141, 16, "Action"),
     ("Avengers: Age of Ultron", 141, 13, "Action"),
     ("Interstellar", 169, 13, "Thriller"),
-    # Genre ENUM only allows Action / Comedy / Thriller / Romance —
-    # drama / sci-fi / fantasy collapse to the closest legal value.
     ("The Dark Knight", 152, 16, "Action"),
     ("Avatar", 162, 13, "Action"),
     ("Avatar: The Way of Water", 192, 13, "Action"),
@@ -48,7 +47,6 @@ MOVIES = [
 ]
 
 COMPLEXES = [
-    # Screen_Type ENUM only allows '2D', '3D', 'IMAX' (per create_tables.sql).
     ("CGV Sư Vạn Hạnh", "11 Sư Vạn Hạnh", "Quận 10", "TP.HCM",
      [("Cinema 1", "2D"), ("Cinema 2", "3D"), ("Cinema 3", "2D"), ("IMAX 1", "IMAX")]),
     ("CGV Vincom Đồng Khởi", "72 Lê Thánh Tôn", "Quận 1", "TP.HCM",
@@ -171,7 +169,7 @@ def main():
         # Every movie gets showtimes in every auditorium, every day.
         # Movies that already have any showtime are skipped so re-runs only
         # add shows for newly-seeded movies.
-        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
         audits = db.query(Auditorium).all()
         for movie in db.query(Movie).all():
             already = db.query(Showtime).filter(Showtime.Movie_ID == movie.Movie_ID).count()
@@ -200,20 +198,39 @@ def main():
         db.commit()
 
         # --- Promotions --------------------------------------------------
-        # Employee-only 50% (Discount_Value = 50 → percent per Calculate_Valid_Discount)
-        if not db.query(Promotion).filter(Promotion.Code == "STAFF2026").first():
-            db.add(Promotion(
-                Code="STAFF2026",
-                Discount_Value=50,
-                Expiration_Date=date(2099, 12, 31),
-            ))
-        # Public 10% welcome
-        if not db.query(Promotion).filter(Promotion.Code == "WELCOME10").first():
-            db.add(Promotion(
-                Code="WELCOME10",
-                Discount_Value=10,
-                Expiration_Date=date.today() + timedelta(days=180),
-            ))
+        # Catalog (PROMOTION) + per-user codes (PROMOTION_WALLET).
+        # Convention: Discount_Value <= 100 → percent, > 100 → flat VND.
+        def _ensure_promotion(name: str, discount_value: float, expires: date) -> Promotion:
+            promo = db.query(Promotion).filter(Promotion.Promotion_Name == name).first()
+            if promo:
+                return promo
+            promo = Promotion(
+                Promotion_Name=name,
+                Discount_Value=discount_value,
+                Expiration_Date=expires,
+            )
+            db.add(promo)
+            db.flush()
+            return promo
+
+        def _issue_code(code: str, promotion_id: int, owner_id: int):
+            if db.query(PromotionWallet).filter(PromotionWallet.Code == code).first():
+                return
+            db.add(PromotionWallet(Code=code, Promotion_ID=promotion_id, Owner_ID=owner_id))
+
+        staff_promo = _ensure_promotion("Staff Discount 50%", 50, date(2099, 12, 31))
+        welcome_promo = _ensure_promotion(
+            "Welcome 10%", 10, date.today() + timedelta(days=180)
+        )
+
+        # STAFF2026 → every staff. Code is per-user since PROMOTION_WALLET.Code is PK.
+        for s in db.query(Staff).all():
+            _issue_code(f"STAFF2026-{s.User_ID}", staff_promo.Promotion_ID, s.User_ID)
+
+        # WELCOME10 → every customer.
+        for c in db.query(Customer).all():
+            _issue_code(f"WELCOME10-{c.User_ID}", welcome_promo.Promotion_ID, c.User_ID)
+
         db.commit()
         print("Seed complete.")
     finally:

@@ -1,12 +1,14 @@
-"""Loyalty router — strict schema.
+"""Loyalty router — strict schema (PROMOTION + PROMOTION_WALLET).
 
 CUSTOMER.Loyalty_Points already exists. There is no LOYALTY_TRANSACTION table
 in the strict schema, so the transaction history is *derived* from BOOKING +
 Calc_Loyalty_Points_For_Booking().
 
-Redeeming points creates a personal voucher in PROMOTION, encoded as
-'LP{user_id}-{rand}'. Per Calculate_Valid_Discount(), Discount_Value <= 100
-is interpreted as a percentage.
+Redeeming points creates a row in PROMOTION (catalog) plus a row in
+PROMOTION_WALLET (per-user code) — owned by the customer. The wallet code
+is encoded as 'LP{user_id}-{rand}' for backward compatibility / display,
+but ownership is now enforced by PROMOTION_WALLET.Owner_ID, not the prefix.
+Per the original convention, Discount_Value <= 100 means percentage off.
 """
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,7 +20,7 @@ import secrets
 
 from app.database import get_db
 from app.models.booking import Booking
-from app.models.promo import Promotion
+from app.models.promo import Promotion, PromotionWallet
 from app.models.user import CineUser
 from app.core.deps import get_current_user
 
@@ -100,11 +102,23 @@ def redeem_points(
 
     expires = date.today() + timedelta(days=30)
     code = f"LP{current.User_ID}-{secrets.token_hex(4).upper()}"
-    db.add(Promotion(
-        Code=code,
-        Discount_Value=discount_percent,   # <= 100 → percent in Calculate_Valid_Discount
+
+    # 1) Catalog row — defines the discount value & expiration.
+    promotion = Promotion(
+        Promotion_Name=f"Loyalty {int(discount_percent)}% off",
+        Discount_Value=discount_percent,   # <= 100 → percent
         Expiration_Date=expires,
-    ))
+    )
+    db.add(promotion)
+    db.flush()                              # need Promotion_ID for the wallet row
+
+    # 2) Wallet row — code owned by this customer.
+    wallet = PromotionWallet(
+        Code=code,
+        Promotion_ID=promotion.Promotion_ID,
+        Owner_ID=current.User_ID,
+    )
+    db.add(wallet)
 
     current.customer.Loyalty_Points = max(0, int(current.customer.Loyalty_Points) - pts)
 

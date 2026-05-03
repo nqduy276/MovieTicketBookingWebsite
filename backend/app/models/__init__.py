@@ -6,7 +6,7 @@ from app.models.showtime import Showtime
 from app.models.seat import Seat, SeatStatus
 from app.models.booking import Booking, Ticket, BookingFandb, BookingPromo
 from app.models.food import FandbItem
-from app.models.promo import Promotion
+from app.models.promo import Promotion, PromotionWallet
 
 __all__ = [
     "CineUser", "Customer", "Staff", "UserPhone", "UserRole",
@@ -16,5 +16,5 @@ __all__ = [
     "Seat", "SeatStatus",
     "Booking", "Ticket", "BookingFandb", "BookingPromo",
     "FandbItem",
-    "Promotion",
+    "Promotion", "PromotionWallet",
 ]

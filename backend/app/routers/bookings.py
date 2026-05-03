@@ -4,14 +4,17 @@ Booking router — strict /create_tables.sql schema only.
 Booking creation calls the MakeBooking stored procedure (database_logic_P4.sql),
 which already:
   * Validates the showtime exists.
-  * Sums seat prices + F&B totals into BOOKING.Total_Amount.
+  * Sums seat prices + F&B totals.
+  * Calls Calculate_Valid_Discount(p_User_ID, p_Promo_Code) and *applies* the
+    discount before INSERT — so BOOKING.Total_Amount stored is already the
+    final price.
   * Inserts TICKET, BOOKING_FANDB, BOOKING_PROMO rows.
   * Awards loyalty points to customers via Calc_Loyalty_Points_For_Booking.
 
-Promotion discounts are computed on-the-fly via Calculate_Valid_Discount.
-Booking status (UPCOMING/CANCELLED/EXPIRED), code (BK########), and the
-seat/food/discount breakdown are *derived* on read since the strict schema
-doesn't store them.
+Promo validation (ownership / expiry / used) lives in the SQL function — we
+pre-check here only to surface clean error messages before invoking the SP.
+Booking status (UPCOMING/CANCELLED/EXPIRED) and the booking code (BK########)
+are derived on read since the strict schema doesn't store them.
 """
 import json
 import secrets
@@ -28,7 +31,7 @@ from app.models.seat import Seat, SeatStatus
 from app.models.showtime import Showtime
 from app.models.cinema import Auditorium, TheaterComplex
 from app.models.food import FandbItem
-from app.models.promo import Promotion
+from app.models.promo import Promotion, PromotionWallet
 from app.schemas.booking import BookingCreate, BookingOut, BookingFoodOut
 from app.schemas.seat import SeatOut
 from app.core.deps import get_current_user
@@ -103,24 +106,13 @@ def _booking_to_out(b: Booking, db: Session) -> BookingOut:
             name=f.item.Name if f.item else None,
         ))
 
-    # Discount: subtotal - actual stored Total_Amount (MakeBooking applied it).
-    # Note: MakeBooking does NOT subtract promo from Total_Amount; it only
-    # inserts BOOKING_PROMO. So we compute discount via Calculate_Valid_Discount.
+    # Discount: MakeBooking has already subtracted it from Total_Amount, so
+    # discount = subtotal - stored_total (clamped at 0).
     promo_code = b.promos[0].Code if b.promos else None
-    discount = 0.0
-    if promo_code:
-        try:
-            row = db.execute(
-                text("SELECT Calculate_Valid_Discount(:bid) AS d"),
-                {"bid": b.Booking_ID},
-            ).mappings().first()
-            if row:
-                discount = float(row["d"] or 0)
-        except Exception:
-            db.rollback()
-
     subtotal = seat_total + food_total
-    total_after = max(0.0, subtotal - discount)
+    stored_total = float(b.Total_Amount or 0)
+    discount = max(0.0, subtotal - stored_total)
+    total_after = stored_total
 
     # Loyalty points awarded (via SQL function, customers only)
     points = 0.0
@@ -210,33 +202,33 @@ def create_booking(
     if taken:
         raise HTTPException(409, f"Seat {taken[0]} is already booked")
 
-    # 4. Promo eligibility checks (the SQL function validates expiry+discount math).
+    # 4. Promo eligibility — pre-check against PROMOTION_WALLET so we surface a
+    # clean 400 before invoking MakeBooking. The SP will also call
+    # Calculate_Valid_Discount which re-validates ownership / expiry / used.
     promo_code = (payload.promo_code or "").strip() or None
     if promo_code:
-        promo = db.query(Promotion).filter(Promotion.Code == promo_code).first()
-        if not promo:
+        wallet = (
+            db.query(PromotionWallet)
+            .filter(PromotionWallet.Code == promo_code)
+            .first()
+        )
+        if not wallet:
             raise HTTPException(400, "Promo code not found")
-        if promo.Expiration_Date and promo.Expiration_Date < date.today():
-            raise HTTPException(400, "Promo code expired")
-        # STAFF prefix → employee-only
+        if wallet.Owner_ID != current.User_ID:
+            raise HTTPException(400, "Promo code does not belong to you")
+        # STAFF prefix → employee-only (regardless of Owner_ID)
         if promo_code.upper().startswith("STAFF") and current.role != UserRole.EMPLOYEE:
             raise HTTPException(403, "Mã này chỉ dành cho nhân viên")
-        # LP/VC prefix → personal voucher; encoded user id after the prefix
-        if promo_code.upper().startswith(("LP", "VC")):
-            owner_id = _voucher_owner(promo_code)
-            if owner_id is not None and owner_id != current.User_ID:
-                raise HTTPException(400, "Promo code does not belong to you")
-            # one-time vouchers — fail if already attached to a previous booking
-            used = (
-                db.query(BookingPromo)
-                .filter(BookingPromo.Code == promo_code)
-                .first()
-            )
-            if used:
-                raise HTTPException(400, "Promo code already used")
+        # One-time vouchers — fail if already attached to a previous booking
+        used = db.query(BookingPromo).filter(BookingPromo.Code == promo_code).first()
+        if used:
+            raise HTTPException(400, "Promo code already used")
+        promotion = wallet.promotion
+        if promotion and promotion.Expiration_Date and promotion.Expiration_Date < date.today():
+            raise HTTPException(400, "Promo code expired")
 
-    # 5. Call MakeBooking. It computes Total_Amount, inserts TICKET / BOOKING_FANDB /
-    # BOOKING_PROMO, and awards loyalty points (customers only).
+    # 5. Call MakeBooking. It computes Total_Amount (with discount already applied),
+    # inserts TICKET / BOOKING_FANDB / BOOKING_PROMO, and awards loyalty points.
     seats_json = json.dumps(seat_nos)
     fandb_json = json.dumps([{"id": fi.food_id, "qty": fi.quantity} for fi in payload.food_items])
     try:
@@ -308,23 +300,6 @@ def get_booking(
     return _booking_to_out(b, db)
 
 
-def _voucher_owner(code: str) -> Optional[int]:
-    """Vouchers are encoded as 'LP{user_id}-{rand}' or 'VC{user_id}-{rand}'."""
-    if not code or len(code) < 3:
-        return None
-    prefix = code[:2].upper()
-    if prefix not in ("LP", "VC"):
-        return None
-    body = code[2:]
-    if "-" not in body:
-        return None
-    head = body.split("-", 1)[0]
-    try:
-        return int(head)
-    except ValueError:
-        return None
-
-
 @router.post("/{booking_id}/cancel", response_model=BookingOut)
 def cancel_booking(
     booking_id: int,
@@ -352,17 +327,22 @@ def cancel_booking(
     for t in list(booking.tickets):
         db.delete(t)
 
-    # 2. Refund voucher (flat VND amount, encoded with owner id).
+    # 2. Refund voucher — create a Promotion (catalog) + PromotionWallet (per-user code).
     if total > 0:
         voucher_code = f"VC{current.User_ID}-{secrets.token_hex(4).upper()}"
-        voucher = Promotion(
-            Code=voucher_code,
-            Discount_Value=total,           # > 100 → flat amount per Calculate_Valid_Discount
+        promotion = Promotion(
+            Promotion_Name=f"Refund voucher (booking #{booking.Booking_ID})",
+            Discount_Value=total,           # > 100 → flat amount per discount convention
             Expiration_Date=date.today() + timedelta(days=180),
         )
-        db.add(voucher)
-
-
+        db.add(promotion)
+        db.flush()
+        wallet = PromotionWallet(
+            Code=voucher_code,
+            Promotion_ID=promotion.Promotion_ID,
+            Owner_ID=current.User_ID,
+        )
+        db.add(wallet)
 
     db.commit()
     db.refresh(booking)

@@ -61,7 +61,7 @@ class BookingPromo(Base):
     __tablename__ = "BOOKING_PROMO"
 
     Booking_ID = Column("Booking_ID", Integer, ForeignKey("BOOKING.Booking_ID", ondelete="CASCADE"), primary_key=True)
-    Code = Column("Code", String(50), ForeignKey("PROMOTION.Code", ondelete="CASCADE"), primary_key=True)
+    Code = Column("Code", String(50), ForeignKey("PROMOTION_WALLET.Code", ondelete="CASCADE"), primary_key=True)
 
     booking = relationship("Booking", back_populates="promos")
-    promotion = relationship("Promotion")
+    wallet_entry = relationship("PromotionWallet")

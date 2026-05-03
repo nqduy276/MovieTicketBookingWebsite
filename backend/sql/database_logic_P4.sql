@@ -49,9 +49,9 @@ BEGIN
         IF done THEN LEAVE item_loop; END IF;
         
         IF v_Item_Type = 'TICKET' THEN
-            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 0.5 / 1000) AS SIGNED);
+            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 0.05 / 1000) AS SIGNED);
         ELSEIF v_Item_Type = 'FANDB' THEN
-            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 1 / 1000) AS SIGNED);
+            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 0.10 / 1000) AS SIGNED);
         END IF;
     END LOOP;
     CLOSE cur_items;
@@ -64,64 +64,103 @@ END //
 -- ==========================================
 DROP FUNCTION IF EXISTS Calculate_Valid_Discount //
 
-CREATE FUNCTION Calculate_Valid_Discount(p_Booking_ID INT) 
+CREATE FUNCTION Calculate_Valid_Discount(
+    p_User_ID INT, 
+    p_Code VARCHAR(50)
+) 
 RETURNS DECIMAL(10,2)
-DETERMINISTIC
+READS SQL DATA
 BEGIN
-    DECLARE v_Total_Discount DECIMAL(10,2) DEFAULT 0;
-    DECLARE v_Base_Amount DECIMAL(10,2) DEFAULT 0;
-    DECLARE v_Ticket_Total DECIMAL(10,2) DEFAULT 0;
-    DECLARE v_FandB_Total DECIMAL(10,2) DEFAULT 0;
-    DECLARE v_Discount_Value DECIMAL(10,2);
+    DECLARE v_Discount_Value DECIMAL(10,2) DEFAULT -1;
     DECLARE v_Expiration_Date DATE;
-    DECLARE v_Exists INT DEFAULT 0;
-    DECLARE done INT DEFAULT FALSE;
-    
-    DECLARE cur_promos CURSOR FOR
-        SELECT p.Discount_Value, p.Expiration_Date
-        FROM BOOKING_PROMO bp
-        JOIN PROMOTION p ON bp.Code = p.Code
-        WHERE bp.Booking_ID = p_Booking_ID;
-        
-    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
-    
-    SELECT COUNT(*) INTO v_Exists FROM BOOKING WHERE Booking_ID = p_Booking_ID;
-    IF v_Exists = 0 THEN RETURN -1; END IF;
-    
-    SELECT IFNULL(SUM(s.Price), 0) INTO v_Ticket_Total
-    FROM TICKET t JOIN SEAT s ON t.Room_ID = s.Room_ID AND t.Seat_No = s.Seat_No
-    WHERE t.Booking_ID = p_Booking_ID;
-    
-    SELECT IFNULL(SUM(f.Price * bf.Quantity), 0) INTO v_FandB_Total
-    FROM BOOKING_FANDB bf JOIN FANDB_ITEM f ON bf.Item_ID = f.Item_ID
-    WHERE bf.Booking_ID = p_Booking_ID;
-    
-    SET v_Base_Amount = v_Ticket_Total + v_FandB_Total;
-    IF v_Base_Amount = 0 THEN RETURN 0; END IF;
-    
-    OPEN cur_promos;
-    promo_loop: LOOP
-        FETCH cur_promos INTO v_Discount_Value, v_Expiration_Date;
-        IF done THEN LEAVE promo_loop; END IF;
-        
-        -- Kiểm tra hạn dùng mã khuyến mãi 
-        IF v_Expiration_Date >= CURDATE() THEN
-            -- Constraint #3: Kiểm tra % hay tiền mặt 
-            IF v_Discount_Value <= 100 THEN
-                SET v_Total_Discount = v_Total_Discount + (v_Base_Amount * (v_Discount_Value / 100));
-            ELSE
-                SET v_Total_Discount = v_Total_Discount + v_Discount_Value;
-            END IF;
-        END IF;
-    END LOOP;
-    CLOSE cur_promos;
-    
-    -- Constraint #3: Tổng giảm không vượt quá tiền gốc
-    IF v_Total_Discount > v_Base_Amount THEN
-        SET v_Total_Discount = v_Base_Amount;
+    DECLARE v_Is_Used INT DEFAULT 0;
+
+    -- 1. Truy xuất thông tin mã từ ví của User và bảng gốc Promotion
+    SELECT p.Discount_Value, p.Expiration_Date 
+    INTO v_Discount_Value, v_Expiration_Date
+    FROM PROMOTION_WALLET pw
+    JOIN PROMOTION p ON pw.Promotion_ID = p.Promotion_ID
+    WHERE pw.Code = p_Code AND pw.Owner_ID = p_User_ID;
+
+    -- KIỂM TRA 1: Quyền sở hữu
+    -- Nếu không tìm thấy dòng nào, v_Discount_Value vẫn là -1
+    IF v_Discount_Value = -1 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Lỗi: Mã khuyến mãi không tồn tại trong ví của bạn!';
     END IF;
-    
-    RETURN v_Total_Discount;
+
+    -- KIỂM TRA 2: Hạn sử dụng
+    IF v_Expiration_Date < CURDATE() THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Lỗi: Mã khuyến mãi đã hết hạn sử dụng!';
+    END IF;
+
+    -- KIỂM TRA 3: Đã sử dụng chưa (Kiểm tra trong lịch sử đặt vé)
+    SELECT COUNT(*) INTO v_Is_Used 
+    FROM BOOKING_PROMO 
+    WHERE Code = p_Code;
+
+    IF v_Is_Used > 0 THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Lỗi: Mã khuyến mãi này đã được sử dụng rồi!';
+    END IF;
+
+    -- Nếu vượt qua tất cả, trả về giá trị giảm giá
+    RETURN v_Discount_Value;
+    -- DECLARE v_Total_Discount DECIMAL(10,2) DEFAULT 0;
+--     DECLARE v_Base_Amount DECIMAL(10,2) DEFAULT 0;
+--     DECLARE v_Ticket_Total DECIMAL(10,2) DEFAULT 0;
+--     DECLARE v_FandB_Total DECIMAL(10,2) DEFAULT 0;
+--     DECLARE v_Discount_Value DECIMAL(10,2);
+--     DECLARE v_Expiration_Date DATE;
+--     DECLARE v_Exists INT DEFAULT 0;
+--     DECLARE done INT DEFAULT FALSE;
+--     
+--     DECLARE cur_promos CURSOR FOR
+--         SELECT p.Discount_Value, p.Expiration_Date
+--         FROM BOOKING_PROMO bp
+--         JOIN PROMOTION p ON bp.Code = p.Code
+--         WHERE bp.Booking_ID = p_Booking_ID;
+--         
+--     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+--     
+--     SELECT COUNT(*) INTO v_Exists FROM BOOKING WHERE Booking_ID = p_Booking_ID;
+--     IF v_Exists = 0 THEN RETURN -1; END IF;
+--     
+--     SELECT IFNULL(SUM(s.Price), 0) INTO v_Ticket_Total
+--     FROM TICKET t JOIN SEAT s ON t.Room_ID = s.Room_ID AND t.Seat_No = s.Seat_No
+--     WHERE t.Booking_ID = p_Booking_ID;
+--     
+--     SELECT IFNULL(SUM(f.Price * bf.Quantity), 0) INTO v_FandB_Total
+--     FROM BOOKING_FANDB bf JOIN FANDB_ITEM f ON bf.Item_ID = f.Item_ID
+--     WHERE bf.Booking_ID = p_Booking_ID;
+--     
+--     SET v_Base_Amount = v_Ticket_Total + v_FandB_Total;
+--     IF v_Base_Amount = 0 THEN RETURN 0; END IF;
+--     
+--     OPEN cur_promos;
+--     promo_loop: LOOP
+--         FETCH cur_promos INTO v_Discount_Value, v_Expiration_Date;
+--         IF done THEN LEAVE promo_loop; END IF;
+--         
+--         -- Kiểm tra hạn dùng mã khuyến mãi 
+--         IF v_Expiration_Date >= CURDATE() THEN
+--             -- Constraint #3: Kiểm tra % hay tiền mặt 
+--             IF v_Discount_Value <= 100 THEN
+--                 SET v_Total_Discount = v_Total_Discount + (v_Base_Amount * (v_Discount_Value / 100));
+--             ELSE
+--                 SET v_Total_Discount = v_Total_Discount + v_Discount_Value;
+--             END IF;
+--         END IF;
+--     END LOOP;
+--     CLOSE cur_promos;
+--     
+--     -- Constraint #3: Tổng giảm không vượt quá tiền gốc
+--     IF v_Total_Discount > v_Base_Amount THEN
+--         SET v_Total_Discount = v_Base_Amount;
+--     END IF;
+--     
+--     RETURN v_Total_Discount;
 END //
 
 -- Trả về Delimiter mặc định ở cuối cùng
@@ -151,6 +190,7 @@ BEGIN
     
     DECLARE v_Count INT;
     DECLARE v_Earned_Points INT DEFAULT 0;
+    DECLARE v_Discount_Value DECIMAL(10,2) DEFAULT 0;
 
     -- Xử lý lỗi hệ thống
     DECLARE exit handler for sqlexception
@@ -201,6 +241,15 @@ BEGIN
             END IF;
             SET i = i + 1;
         END WHILE;
+    END IF;
+    
+    IF p_Promo_Code IS NOT NULL AND p_Promo_Code != '' THEN
+        SET v_Discount_Value = Calculate_Valid_Discount(p_User_ID, p_Promo_Code);
+        IF v_Discount_Value <= 100 THEN
+            SET v_Total_Amount = v_Total_Amount - (v_Total_Amount * v_Discount_Value / 100);
+        ELSE
+            SET v_Total_Amount = v_Total_Amount - v_Discount_Value;
+        END IF;
     END IF;
 
     -- ==========================================
@@ -262,6 +311,23 @@ BEGIN
         v_Total_Amount AS Final_Total, 
         v_Earned_Points AS Points_Added;
 
+END //
+
+DELIMITER ;
+
+DELIMITER //
+
+DROP PROCEDURE IF EXISTS MenuView //
+
+CREATE PROCEDURE MenuView()
+BEGIN
+    -- Lấy tất cả thông tin từ bảng đồ ăn và thức uống
+    SELECT 
+        Item_ID, 
+        Name, 
+        Price, 
+        Category 
+    FROM FANDB_ITEM;
 END //
 
 DELIMITER ;
