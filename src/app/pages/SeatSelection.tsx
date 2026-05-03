@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { apiGet, apiPost } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import type {
   ApiSeat,
   ApiShowtime,
@@ -27,6 +28,7 @@ const FALLBACK_POSTER = 'https://placehold.co/200x300/27272a/f97316?text=No+Imag
 export default function SeatSelection() {
   const { showtimeId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [showtime, setShowtime] = useState<ApiShowtime | null>(null);
   const [movie, setMovie] = useState<ApiMovie | null>(null);
@@ -210,10 +212,29 @@ export default function SeatSelection() {
               <div className="text-zinc-400 text-sm space-y-0.5">
                 <p>Rạp: <span className="text-zinc-200">{cinema?.name || '...'}{showtime.room ? ` - ${showtime.room}` : ''}{showtime.type ? ` (${showtime.type})` : ''}</span></p>
                 <p>Suất chiếu: <span className="text-zinc-200">{startDate.toLocaleString('vi-VN')}</span></p>
+                {movie.age_restriction > 0 && (
+                  <p>Giới hạn độ tuổi: <span className="text-amber-400 font-semibold">{movie.age_restriction}+</span></p>
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        {/* Age-gate warning — customers under the movie's required age */}
+        {user?.role === 'customer'
+          && movie.age_restriction > 0
+          && typeof user.age === 'number'
+          && user.age < movie.age_restriction && (
+          <div className="bg-red-950/40 border border-red-600/50 rounded-xl p-4 mb-6 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="text-red-300 font-semibold mb-0.5">Không đủ độ tuổi đặt vé</p>
+              <p className="text-red-400/90">
+                Phim này dành cho khán giả từ {movie.age_restriction} tuổi trở lên. Bạn hiện {user.age} tuổi.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Screen */}
         <div className="mb-10 max-w-4xl mx-auto">

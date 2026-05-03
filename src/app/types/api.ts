@@ -17,9 +17,10 @@ export interface User {
   role: UserRole;
   loyalty_points: number;     // from CUSTOMER.Loyalty_Points (0 for staff)
   created_at: string;
+  date_of_birth?: string | null;   // CUSTOMER.Date_of_Birth (ISO date) — null for staff
+  age?: number | null;             // computed from date_of_birth
   // Legacy FE compat — always null from backend:
   username?: string | null;
-  age?: number | null;
 }
 
 export interface AuthResponse {

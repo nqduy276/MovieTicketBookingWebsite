@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useAuth } from '../lib/auth';
-import { User as UserIcon, Mail, Phone, Calendar, Star, CheckCircle, Edit3 } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Calendar, Star, CheckCircle, Edit3, Cake } from 'lucide-react';
 
 export default function ProfilePage() {
   const { user, updateProfile } = useAuth();
@@ -165,6 +165,27 @@ export default function ProfilePage() {
                   </div>
                 )}
               </div>
+
+              {/* Date of birth + age (customers only — read-only) */}
+              {isCustomer && (
+                <div>
+                  <Label className="text-zinc-500 text-xs flex items-center gap-1.5 mb-1.5">
+                    <Cake className="w-3.5 h-3.5" /> Ngày sinh
+                  </Label>
+                  <div className="bg-zinc-950/80 border border-zinc-800/50 rounded-lg px-4 py-2.5 text-white text-sm flex items-center justify-between">
+                    {user.date_of_birth ? (
+                      <>
+                        <span>{new Date(user.date_of_birth).toLocaleDateString('vi-VN')}</span>
+                        {typeof user.age === 'number' && (
+                          <span className="text-xs text-zinc-400">{user.age} tuổi</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-zinc-600">Chưa cập nhật</span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Phone */}
               <div>

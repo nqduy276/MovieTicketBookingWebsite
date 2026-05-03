@@ -37,9 +37,10 @@ class UserOut(BaseModel):
     role: UserRole
     loyalty_points: float
     created_at: datetime
+    date_of_birth: Optional[date] = None      # from CUSTOMER.Date_of_Birth (null for staff)
+    age: Optional[int] = None                 # computed from date_of_birth
     # Kept for FE compatibility but always None now:
     username: Optional[str] = None
-    age: Optional[int] = None
 
 
 class LoginRequest(BaseModel):
@@ -56,7 +57,16 @@ class Token(BaseModel):
     user: UserOut
 
 
+def _compute_age(dob: Optional[date]) -> Optional[int]:
+    if not dob:
+        return None
+    today = date.today()
+    years = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    return max(0, years)
+
+
 def cineuser_to_out(u) -> UserOut:
+    dob = u.customer.Date_of_Birth if u.customer else None
     return UserOut(
         id=u.User_ID,
         email=u.Email,
@@ -67,4 +77,6 @@ def cineuser_to_out(u) -> UserOut:
         role=u.role,
         loyalty_points=u.loyalty_points,
         created_at=u.Registration_Date or datetime.utcnow(),
+        date_of_birth=dob,
+        age=_compute_age(dob),
     )

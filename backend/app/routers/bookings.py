@@ -31,6 +31,7 @@ from app.models.seat import Seat, SeatStatus
 from app.models.showtime import Showtime
 from app.models.cinema import Auditorium, TheaterComplex
 from app.models.food import FandbItem
+from app.models.movie import Movie
 from app.models.promo import Promotion, PromotionWallet
 from app.schemas.booking import BookingCreate, BookingOut, BookingFoodOut
 from app.schemas.seat import SeatOut
@@ -56,6 +57,11 @@ def _seat_no_from_id(syn_id: int) -> Optional[str]:
 
 def _booking_code(b: Booking) -> str:
     return f"BK{b.Booking_ID:08d}"
+
+
+def _age_years(dob: date) -> int:
+    today = date.today()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
 
 def _booking_to_out(b: Booking, db: Session) -> BookingOut:
@@ -173,6 +179,22 @@ def create_booking(
 
     if not payload.seat_ids:
         raise HTTPException(400, "At least one seat must be selected")
+
+    # 1b. Age restriction — customers must satisfy MOVIE.Age_Restriction.
+    # Staff are not subject to the check (they have no Date_of_Birth row in CUSTOMER).
+    if current.customer is not None:
+        movie = db.query(Movie).filter(Movie.Movie_ID == showtime.Movie_ID).first()
+        required = int(movie.Age_Restriction or 0) if movie else 0
+        if required > 0:
+            dob = current.customer.Date_of_Birth
+            if not dob:
+                raise HTTPException(400, "Tài khoản chưa có ngày sinh, không thể xác minh độ tuổi")
+            user_age = _age_years(dob)
+            if user_age < required:
+                raise HTTPException(
+                    403,
+                    f"Phim này yêu cầu khán giả từ {required} tuổi trở lên (bạn {user_age} tuổi)",
+                )
 
     # 2. Decode synthetic seat ids → seat_no strings, validate they exist in the room
     seat_nos: List[str] = []
