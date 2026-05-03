@@ -6,7 +6,7 @@ from typing import List
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    DATABASE_URL: str = "mysql+pymysql://root:password@localhost:3306/CineBook"
+    DATABASE_URL: str = "mysql+pymysql://root:@localhost:3306/CineBook?charset=utf8mb4"
 
     SECRET_KEY: str = "change-me"
     ALGORITHM: str = "HS256"
