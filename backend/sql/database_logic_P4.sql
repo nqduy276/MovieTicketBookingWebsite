@@ -49,9 +49,9 @@ BEGIN
         IF done THEN LEAVE item_loop; END IF;
         
         IF v_Item_Type = 'TICKET' THEN
-            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 0.05 / 1000) AS SIGNED);
+            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 0.5 / 1000) AS SIGNED);
         ELSEIF v_Item_Type = 'FANDB' THEN
-            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 0.10 / 1000) AS SIGNED);
+            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 1.0 / 1000) AS SIGNED);
         END IF;
     END LOOP;
     CLOSE cur_items;
