@@ -9,7 +9,9 @@ import MyBookings from './pages/MyBookings';
 import LoyaltyPage from './pages/LoyaltyPage';
 import VouchersPage from './pages/VouchersPage';
 import ProfilePage from './pages/ProfilePage';
+import AdminPanel from './pages/AdminPanel';
 import RequireAuth from './components/RequireAuth';
+import RequireAdmin from './components/RequireAdmin';
 
 export const router = createBrowserRouter([
   { path: '/',                   Component: Home },
@@ -62,6 +64,14 @@ export const router = createBrowserRouter([
       <RequireAuth>
         <ProfilePage />
       </RequireAuth>
+    ),
+  },
+  {
+    path: '/admin',
+    element: (
+      <RequireAdmin>
+        <AdminPanel />
+      </RequireAdmin>
     ),
   },
 ]);

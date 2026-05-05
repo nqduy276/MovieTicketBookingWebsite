@@ -24,7 +24,7 @@ from app.models.user import CineUser, UserRole
 from app.schemas.promo import (
     PromoOut, PromoCreate, PromoIssue, PromoCheckResponse, promo_to_out,
 )
-from app.core.deps import get_current_user, require_employee
+from app.core.deps import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/promo", tags=["promo"])
 
@@ -99,7 +99,7 @@ def check_promo(
 
 
 @router.post("", response_model=PromoOut, status_code=201)
-def create_promo(payload: PromoCreate, db: Session = Depends(get_db), _=Depends(require_employee)):
+def create_promo(payload: PromoCreate, db: Session = Depends(get_db), _=Depends(require_admin)):
     """Create a PROMOTION (catalog). Optionally also issue one wallet entry."""
     val = payload.discount_value
     if val is None:
@@ -150,7 +150,7 @@ def create_promo(payload: PromoCreate, db: Session = Depends(get_db), _=Depends(
 def issue_wallet_code(
     payload: PromoIssue,
     db: Session = Depends(get_db),
-    _=Depends(require_employee),
+    _=Depends(require_admin),
 ):
     """Issue a PROMOTION_WALLET row (Code + Promotion_ID + Owner_ID)."""
     promotion = db.query(Promotion).filter(Promotion.Promotion_ID == payload.promotion_id).first()

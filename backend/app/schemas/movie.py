@@ -9,6 +9,13 @@ class MovieCreate(BaseModel):
     genres: List[str] = []
 
 
+class MovieUpdate(BaseModel):
+    title: Optional[str] = None
+    duration: Optional[int] = None
+    age_restriction: Optional[int] = None
+    genres: Optional[List[str]] = None
+
+
 class MovieOut(BaseModel):
     """Stable JSON shape — fields the strict schema doesn't have are null."""
     id: int

@@ -12,6 +12,14 @@ class ShowtimeCreate(BaseModel):
     base_price: float = 80000.0
 
 
+class ShowtimeUpdate(BaseModel):
+    movie_id: Optional[int] = None
+    cinema_id: Optional[int] = None
+    room_id: Optional[int] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+
+
 class ShowtimeOut(BaseModel):
     id: int
     movie_id: int

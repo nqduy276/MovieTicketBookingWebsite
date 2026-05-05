@@ -8,6 +8,11 @@ from app.database import get_db
 from app.core.security import decode_access_token
 from app.models.user import CineUser, UserRole
 
+# The single account allowed to manage database content via the admin UI.
+# Other accounts (regular customers and regular staff) cannot perform any
+# create/update/delete operations through the admin endpoints.
+ADMIN_EMAIL = "duy@admin.com"
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
@@ -36,4 +41,15 @@ def require_employee(current: CineUser = Depends(get_current_user)) -> CineUser:
     if current.role != UserRole.EMPLOYEE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Employee access required")
+    return current
+
+
+def require_admin(current: CineUser = Depends(get_current_user)) -> CineUser:
+    """Only the dedicated admin account (duy@admin.com) can manage the
+    database via the admin UI. Regular customers and regular staff get 403."""
+    if (current.Email or "").lower() != ADMIN_EMAIL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required. Only duy@admin.com can manage the database.",
+        )
     return current

@@ -1,7 +1,8 @@
 import { Link, useNavigate } from 'react-router';
-import { Film, LogOut, Ticket, User as UserIcon, Star, Gift, Sparkles } from 'lucide-react';
+import { Film, LogOut, Ticket, User as UserIcon, Star, Gift, Sparkles, Settings } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { Button } from './ui/button';
+import { isAdmin } from './RequireAdmin';
 
 export default function Header() {
   const { user, logout, loading } = useAuth();
@@ -54,6 +55,11 @@ export default function Header() {
               {user && (
                 <Link to="/vouchers" className="text-zinc-400 hover:text-white hover:bg-zinc-800/50 px-4 py-2 rounded-lg transition-all text-sm font-medium flex items-center gap-1.5">
                   <Gift className="w-4 h-4" /> Voucher
+                </Link>
+              )}
+              {user && isAdmin(user.email) && (
+                <Link to="/admin" className="text-zinc-400 hover:text-white hover:bg-zinc-800/50 px-4 py-2 rounded-lg transition-all text-sm font-medium flex items-center gap-1.5">
+                  <Settings className="w-4 h-4" /> Quản trị
                 </Link>
               )}
             </nav>

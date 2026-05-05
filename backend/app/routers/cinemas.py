@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.cinema import TheaterComplex, Auditorium
 from app.models.showtime import Showtime
 from app.schemas.cinema import CinemaOut, CinemaCreate, complex_to_out
-from app.core.deps import require_employee
+from app.core.deps import require_admin
 
 router = APIRouter(prefix="/api/cinemas", tags=["cinemas"])
 
@@ -36,7 +36,7 @@ def list_cinemas_for_movie(movie_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=CinemaOut, status_code=201)
-def create_cinema(payload: CinemaCreate, db: Session = Depends(get_db), _=Depends(require_employee)):
+def create_cinema(payload: CinemaCreate, db: Session = Depends(get_db), _=Depends(require_admin)):
     c = TheaterComplex(
         Name=payload.name, Street=payload.street,
         District=payload.district, City=payload.city,

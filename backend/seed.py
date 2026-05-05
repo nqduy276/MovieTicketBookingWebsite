@@ -120,22 +120,55 @@ def _create_staff(db, email, password, first_name, last_name, role="Staff"):
     )
 
 
+def _ensure_staff(db, email, password, first_name, last_name, role="Staff"):
+    """Ensure `email` exists as a STAFF row with the given Job_Role.
+
+    If the user exists as a CUSTOMER (or as STAFF with a different Job_Role),
+    delete and recreate it. CUSTOMER / STAFF / USER_PHONE rows cascade with
+    CINEUSER (per create_tables.sql), so the DELETE here is enough.
+    """
+    user = db.query(CineUser).filter(CineUser.Email == email).first()
+    if user:
+        existing_staff = db.query(Staff).filter(Staff.User_ID == user.User_ID).first()
+        if existing_staff and existing_staff.Job_Role == role:
+            return
+        db.execute(text("DELETE FROM CINEUSER WHERE Email = :e"), {"e": email})
+        db.flush()
+    _create_staff(db, email, password, first_name, last_name, role)
+
+
+def _ensure_customer(db, email, password, first_name, last_name, dob):
+    """Ensure `email` exists as a CUSTOMER row. Recreate if currently STAFF."""
+    user = db.query(CineUser).filter(CineUser.Email == email).first()
+    if user:
+        existing_customer = db.query(Customer).filter(Customer.User_ID == user.User_ID).first()
+        if existing_customer:
+            return
+        db.execute(text("DELETE FROM CINEUSER WHERE Email = :e"), {"e": email})
+        db.flush()
+    _create_customer(db, email, password, first_name, last_name, dob)
+
+
 def main():
     db = SessionLocal()
     try:
         # --- Users -------------------------------------------------------
-        if not db.query(CineUser).filter(CineUser.Email == "khachhang@cgv.vn").first():
-            _create_customer(db, "duy@admin.com", "123456",
-                             "Nguyễn", "Quốc Duy", date(2005, 6, 27))
-            
-            _create_staff(db, "nhanvien@cgv.vn", "123456",
-                          "Trần", "Nhân Viên", "Staff")
-
-            _create_customer(db, "customer@example.com", "password123",
-                             "Duy", "Nguyen", date(1990, 1, 15))
-            
-            _create_staff(db, "staff@example.com", "password123",
-                          "Khang", "Tran", "Staff")
+        # The admin account (duy@admin.com) is the only account allowed to
+        # manage the database via the admin UI. It is created as STAFF with
+        # Job_Role='Admin'. Regular customers and regular staff cannot use
+        # the admin endpoints — they get 403 from require_admin.
+        #
+        # We use _ensure_staff / _ensure_customer (idempotent + self-healing):
+        # if a previous seed put duy@admin.com in CUSTOMER, the row is dropped
+        # and recreated as STAFF on next run. No manual SQL required.
+        _ensure_staff(db, "duy@admin.com", "123456",
+                      "Nguyễn", "Quốc Duy", "Admin")
+        _ensure_staff(db, "nhanvien@cgv.vn", "123456",
+                      "Trần", "Nhân Viên", "Staff")
+        _ensure_customer(db, "customer@example.com", "password123",
+                         "Duy", "Nguyen", date(1990, 1, 15))
+        _ensure_staff(db, "staff@example.com", "password123",
+                      "Khang", "Tran", "Staff")
         db.commit()
 
         # --- Movies ------------------------------------------------------
