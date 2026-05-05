@@ -94,6 +94,12 @@ export default function SeatSelection() {
 
   const titleVi = movie.title_vi || movie.title;
   const startDate = new Date(showtime.start_time);
+  const endDate = showtime.end_time ? new Date(showtime.end_time) : null;
+  const startStr = startDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  const showtimeRange = endDate
+  ? `${startStr} ~ ${endDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
+  : startDate.toLocaleString('vi-VN');
+
 
   const toggleSeat = (seat: ApiSeat) => {
     if (seat.status === 'booked' || seat.status === 'held') return;
@@ -211,7 +217,7 @@ export default function SeatSelection() {
               <h1 className="text-xl font-bold text-white mb-1">{titleVi}</h1>
               <div className="text-zinc-400 text-sm space-y-0.5">
                 <p>Rạp: <span className="text-zinc-200">{cinema?.name || '...'}{showtime.room ? ` - ${showtime.room}` : ''}{showtime.type ? ` (${showtime.type})` : ''}</span></p>
-                <p>Suất chiếu: <span className="text-zinc-200">{startDate.toLocaleString('vi-VN')}</span></p>
+                <p>Suất chiếu: <span className="text-zinc-200">{showtimeRange}</span></p>
                 {movie.age_restriction > 0 && (
                   <p>Giới hạn độ tuổi: <span className="text-amber-400 font-semibold">{movie.age_restriction}+</span></p>
                 )}
@@ -397,7 +403,7 @@ export default function SeatSelection() {
               <h4 className="font-semibold mb-3 text-base">Tóm tắt</h4>
               <p className="text-zinc-400">Phim: <span className="text-white">{titleVi}</span></p>
               <p className="text-zinc-400">Rạp: <span className="text-white">{cinema?.name}</span></p>
-              <p className="text-zinc-400">Suất: <span className="text-white">{startDate.toLocaleString('vi-VN')}</span></p>
+              <p className="text-zinc-400">Suất: <span className="text-white">{showtimeRange}</span></p>
               <p className="text-zinc-400">
                 Ghế:{' '}
                 <span className="text-white">

@@ -8,6 +8,12 @@ class FoodCreate(BaseModel):
     category: str = "Combo"
 
 
+class FoodUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    category: Optional[str] = None
+
+
 class FoodOut(BaseModel):
     id: int
     name: str

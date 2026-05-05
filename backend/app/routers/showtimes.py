@@ -167,13 +167,18 @@ def get_showtime(showtime_id: int, db: Session = Depends(get_db)):
 
 @router.post("", response_model=ShowtimeOut, status_code=201)
 def create_showtime(payload: ShowtimeCreate, db: Session = Depends(get_db), _=Depends(require_admin)):
+    movie = db.query(Movie).filter(Movie.Movie_ID == payload.movie_id).first()
+    if not movie:
+        raise HTTPException(400, "Movie not found.")
     room_id = payload.room_id
     if room_id is None:
         a = db.query(Auditorium).filter(Auditorium.Complex_ID == payload.cinema_id).first()
         if not a:
             raise HTTPException(400, "No auditorium in this complex")
         room_id = a.Room_ID
-    end_time = payload.end_time or (payload.start_time + timedelta(minutes=120))
+    end_time = payload.end_time or (
+        payload.start_time + timedelta(minutes=movie.Duration + 15)
+    )
     s = Showtime(
         Movie_ID=payload.movie_id,
         Room_ID=room_id,
@@ -232,7 +237,9 @@ def update_showtime(
     if payload.end_time is not None:
         s.End_Time = payload.end_time
     elif payload.start_time is not None:
-        s.End_Time = payload.start_time + timedelta(minutes=120)
+        movie = db.query(Movie).filter(Movie.Movie_ID == s.Movie_ID).first()
+        duration = movie.Duration if movie else 105
+        s.End_Time = payload.start_time + timedelta(minutes=duration + 15)
 
     if s.End_Time <= s.Start_Time:
         raise HTTPException(400, "End time must be after start time.")

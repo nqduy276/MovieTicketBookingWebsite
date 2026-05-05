@@ -4,7 +4,7 @@ import MovieCard from '../components/MovieCard';
 import Header from '../components/Header';
 import { Search, AlertCircle, ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import { apiGet } from '../lib/api';
-import type { ApiMovie } from '../types/api';
+import type { ApiMovie, ApiShowtime } from '../types/api';
 import { Button } from '../components/ui/button';
 import { useNavigate } from 'react-router';
 
@@ -21,8 +21,14 @@ export default function Home() {
   const [heroIdx, setHeroIdx] = useState(0);
 
   useEffect(() => {
-    apiGet<ApiMovie[]>('/api/movies')
-      .then(res => setMovies(res.filter(m => m.image && m.image.trim() !== '')))
+    Promise.all([
+      apiGet<ApiMovie[]>('/api/movies'),
+      apiGet<ApiShowtime[]>('/api/showtimes'),
+    ])
+      .then(([allMovies, showtimes]) => {
+        const ids = new Set(showtimes.map((s) => s.movie_id));
+        setMovies(allMovies.filter((m) => ids.has(m.id)));
+      })
       .catch((e) => setError(e?.message || 'Không tải được danh sách phim'))
       .finally(() => setLoading(false));
   }, []);
@@ -50,7 +56,7 @@ export default function Home() {
     return matchesSearch && matchesGenre;
   });
 
-  const heroMovies = movies.slice(0, 5);
+  const heroMovies = movies.filter((m) => m.image && m.image.trim() !== '').slice(0, 5);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">

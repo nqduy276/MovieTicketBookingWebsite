@@ -63,10 +63,20 @@ interface FormState {
   movie_id: string;
   cinema_id: string;
   start_time: string;
-  end_time: string;
 }
 
-const emptyForm: FormState = { id: null, movie_id: '', cinema_id: '', start_time: '', end_time: '' };
+const emptyForm: FormState = { id: null, movie_id: '', cinema_id: '', start_time: '' };
+
+const BUFFER_MINUTES = 15;
+
+function computeEndTime(startLocal: string, durationMinutes: number | null | undefined): string {
+  if (!startLocal || !durationMinutes || durationMinutes <= 0) return '';
+  const start = new Date(startLocal);
+  if (Number.isNaN(start.getTime())) return '';
+  const end = new Date(start.getTime() + (durationMinutes + BUFFER_MINUTES) * 60_000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
+}
 
 export default function ShowtimesAdmin() {
   const [movies, setMovies] = useState<ApiMovie[]>([]);
@@ -143,11 +153,6 @@ export default function ShowtimesAdmin() {
       if (Number.isNaN(start.getTime())) errs.start_time = 'Giờ bắt đầu không hợp lệ.';
       else if (start.getTime() <= Date.now()) errs.start_time = 'Giờ bắt đầu phải ở tương lai.';
     }
-    if (f.end_time && f.start_time) {
-      const start = new Date(f.start_time);
-      const end = new Date(f.end_time);
-      if (end.getTime() <= start.getTime()) errs.end_time = 'Giờ kết thúc phải sau giờ bắt đầu.';
-    }
     return errs;
   };
 
@@ -157,7 +162,6 @@ export default function ShowtimesAdmin() {
       movie_id: String(r.movie_id),
       cinema_id: String(r.cinema_id),
       start_time: isoToLocalInput(r.start_time),
-      end_time: isoToLocalInput(r.end_time),
     });
     setFormErrors({});
     setBanner(null);
@@ -180,7 +184,6 @@ export default function ShowtimesAdmin() {
         cinema_id: Number(form.cinema_id),
         start_time: localInputToIso(form.start_time),
       };
-      if (form.end_time) payload.end_time = localInputToIso(form.end_time);
 
       if (form.id == null) {
         await apiPost<ApiShowtime>('/api/showtimes', payload);
@@ -290,16 +293,21 @@ export default function ShowtimesAdmin() {
 
           <div>
             <Label className="text-zinc-300 mb-1.5 flex items-center gap-1.5">
-              <Calendar className="w-4 h-4" /> Giờ kết thúc (tùy chọn)
+              <Calendar className="w-4 h-4" /> Giờ kết thúc (tự động)
             </Label>
             <Input
               type="datetime-local"
-              value={form.end_time}
-              onChange={(e) => setForm({ ...form, end_time: e.target.value })}
-              className="bg-zinc-950 border-zinc-700 text-white"
+              value={computeEndTime(
+                form.start_time,
+                movies.find((m) => String(m.id) === form.movie_id)?.duration,
+              )}
+              readOnly
+              disabled
+              className="bg-zinc-950/60 border-zinc-700 text-zinc-400 cursor-not-allowed"
             />
-            {formErrors.end_time && <p className="text-red-400 text-xs mt-1">{formErrors.end_time}</p>}
-            <p className="text-xs text-zinc-500 mt-1">Bỏ trống để mặc định +120 phút sau giờ bắt đầu.</p>
+            <p className="text-xs text-zinc-500 mt-1">
+              Tự tính = giờ bắt đầu + thời lượng phim + {BUFFER_MINUTES} phút.
+            </p>
           </div>
 
           <div className="md:col-span-2 flex justify-end gap-2 mt-2">

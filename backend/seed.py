@@ -154,15 +154,15 @@ def main():
     try:
         # --- Users -------------------------------------------------------
         # The admin account (duy@admin.com) is the only account allowed to
-        # manage the database via the admin UI. It is created as STAFF with
-        # Job_Role='Admin'. Regular customers and regular staff cannot use
-        # the admin endpoints — they get 403 from require_admin.
+        # manage the database via the admin UI. require_admin gates access
+        # by email, so Job_Role just needs to be a valid STAFF enum value
+        # ('Manager' or 'Staff').
         #
         # We use _ensure_staff / _ensure_customer (idempotent + self-healing):
         # if a previous seed put duy@admin.com in CUSTOMER, the row is dropped
         # and recreated as STAFF on next run. No manual SQL required.
         _ensure_staff(db, "duy@admin.com", "123456",
-                      "Nguyễn", "Quốc Duy", "Admin")
+                      "Nguyễn", "Quốc Duy", "Manager")
         _ensure_staff(db, "nhanvien@cgv.vn", "123456",
                       "Trần", "Nhân Viên", "Staff")
         _ensure_customer(db, "customer@example.com", "password123",
@@ -199,29 +199,50 @@ def main():
         db.commit()
 
         # --- Showtimes (next 7 days) -------------------------------------
-        # Every movie gets showtimes in every auditorium, every day.
-        # Movies that already have any showtime are skipped so re-runs only
-        # add shows for newly-seeded movies.
+        # Cap each movie at TARGET_SHOWTIMES_PER_MOVIE shows. On re-runs we
+        # delete excess shows (oldest first, only those with no tickets so
+        # existing bookings stay intact) and top up movies that are short.
+        TARGET_SHOWTIMES_PER_MOVIE = 10
         today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
         audits = db.query(Auditorium).all()
         for movie in db.query(Movie).all():
-            already = db.query(Showtime).filter(Showtime.Movie_ID == movie.Movie_ID).count()
-            if already > 0:
+            total = db.query(Showtime).filter(Showtime.Movie_ID == movie.Movie_ID).count()
+
+            excess = total - TARGET_SHOWTIMES_PER_MOVIE
+            if excess > 0:
+                deletable = (
+                    db.query(Showtime)
+                    .filter(Showtime.Movie_ID == movie.Movie_ID, ~Showtime.tickets.any())
+                    .order_by(Showtime.Start_Time.asc())
+                    .limit(excess)
+                    .all()
+                )
+                for s in deletable:
+                    db.delete(s)
+                db.flush()
+                total = db.query(Showtime).filter(Showtime.Movie_ID == movie.Movie_ID).count()
+
+            needed = TARGET_SHOWTIMES_PER_MOVIE - total
+            if needed <= 0 or not audits:
                 continue
-            for audit in audits:
-                for day_offset in range(7):
-                    num_shows = random.randint(4, 6)
-                    hours = sorted(random.sample(range(8, 24), num_shows))
-                    for hour in hours:
-                        mins = random.choice([0, 15, 30, 45])
-                        start = today + timedelta(days=day_offset, hours=hour, minutes=mins)
-                        end = start + timedelta(minutes=movie.Duration + 15)
-                        db.add(Showtime(
-                            Movie_ID=movie.Movie_ID,
-                            Room_ID=audit.Room_ID,
-                            Start_Time=start,
-                            End_Time=end,
-                        ))
+
+            candidates = [
+                (audit, day_offset, hour)
+                for audit in audits
+                for day_offset in range(7)
+                for hour in range(8, 24)
+            ]
+            random.shuffle(candidates)
+            for audit, day_offset, hour in candidates[:needed]:
+                mins = random.choice([0, 15, 30, 45])
+                start = today + timedelta(days=day_offset, hours=hour, minutes=mins)
+                end = start + timedelta(minutes=movie.Duration + 15)
+                db.add(Showtime(
+                    Movie_ID=movie.Movie_ID,
+                    Room_ID=audit.Room_ID,
+                    Start_Time=start,
+                    End_Time=end,
+                ))
         db.commit()
 
         # --- F&B ---------------------------------------------------------

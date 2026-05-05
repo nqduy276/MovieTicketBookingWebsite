@@ -312,6 +312,9 @@ export default function MovieDetail() {
                   <div className="flex flex-wrap gap-3">
                     {times.map(showtime => {
                       const dt = new Date(showtime.start_time);
+                      const endDt = showtime.end_time ? new Date(showtime.end_time) : null;
+                      const fmt = (d: Date) =>
+                        d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                       return (
                         <button
                           key={showtime.id}
@@ -319,7 +322,12 @@ export default function MovieDetail() {
                           className="bg-zinc-800/80 hover:bg-red-600 text-white rounded-xl px-5 py-3 transition-all group border border-zinc-700/50 hover:border-red-600 hover:shadow-lg hover:shadow-red-600/20 min-w-[120px]"
                         >
                           <div className="text-xl font-bold mb-0.5">
-                            {dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                            {fmt(dt)}
+                            {endDt && (
+                              <span className="text-sm font-normal text-zinc-400 group-hover:text-white/80">
+                                {' '}~ {fmt(endDt)}
+                              </span>
+                            )}
                           </div>
                           <div className="text-xs text-zinc-400 group-hover:text-white/80 mb-1">
                             {[showtime.room, showtime.type].filter(Boolean).join(' • ')}

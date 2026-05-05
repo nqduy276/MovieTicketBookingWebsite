@@ -13,7 +13,6 @@ CREATE TABLE CINEUSER (
     First_Name VARCHAR(100) NOT NULL,
     Last_Name VARCHAR(100) NOT NULL,
     Registration_Date DATETIME DEFAULT CURRENT_TIMESTAMP,
-    -- Ràng buộc định dạng Email cơ bản (có chứa ký tự @)
     CONSTRAINT CHK_User_Email CHECK (Email LIKE '%_@__%.__%')
 );
 
@@ -88,7 +87,7 @@ CREATE TABLE MOVIE (
 
 CREATE TABLE MOVIE_GENRE (
     Movie_ID INT,
-    Genre ENUM('Action','Comedy','Thriller','Romance'),
+    Genre ENUM('Action','Comedy','Thriller','Romance','Horror','Sci-Fi','Animation','Drama','Fantasy','Adventure'),
     PRIMARY KEY (Movie_ID, Genre),
     FOREIGN KEY (Movie_ID) REFERENCES MOVIE(Movie_ID) ON DELETE CASCADE
 );
@@ -174,48 +173,6 @@ CREATE TABLE BOOKING_PROMO (
     FOREIGN KEY (Code) REFERENCES PROMOTION_WALLET(Code) ON DELETE CASCADE
 );
 
--- ==========================================
--- 				TEST MOCK DATA
--- ==========================================
--- INSERT INTO USER (Email, Password, First_Name, Last_Name)
--- VALUES 
--- ('chip@gmail.com', '123', 'DiepAnh', 'Nguyen'),
--- ('duy@gmail.com', '123', 'QuocDuy', 'Nguyen');
-
--- INSERT INTO CUSTOMER (User_ID, Date_of_Birth, Loyalty_Points)
--- VALUES 
--- (1, '2003-01-01', 100),
--- (2, '2005-06-17', 50);
-
--- INSERT INTO MOVIE (Title, Duration, Age_Restriction)
--- VALUES
--- ('Avengers', 120, 13),
--- ('Inception', 148, 16);
-
--- INSERT INTO THEATER_COMPLEX (Name, Street, District, City)
--- VALUES
--- ('CGV Vincom', 'Le Thanh Ton', 'District 1', 'HCM');
-
--- INSERT INTO AUDITORIUM (Room_Name, Screen_Type, Complex_ID)
--- VALUES
--- ('Room 1', 'Standard', 1);
-
--- INSERT INTO SEAT (Room_ID, Seat_No, Seat_Type, Price)
--- VALUES
--- (1, 'A1', 'Normal', 50000),
--- (1, 'A2', 'Normal', 50000);
-
--- INSERT INTO SHOWTIME (Start_Time, End_Time, Movie_ID, Room_ID)
--- VALUES
--- ('2026-05-01 18:00:00', '2026-05-01 20:00:00', 1, 1);
-
--- INSERT INTO BOOKING (User_ID, Total_Amount)
--- VALUES
--- (1, 100000);
-
--- INSERT INTO TICKET (Booking_ID, Showtime_ID, Room_ID, Seat_No)
--- VALUES
--- (1, 1, 1, 'A1
 
 
 
