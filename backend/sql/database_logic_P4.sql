@@ -51,7 +51,7 @@ BEGIN
         IF v_Item_Type = 'TICKET' THEN
             SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 0.5 / 1000) AS SIGNED);
         ELSEIF v_Item_Type = 'FANDB' THEN
-            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 1.0 / 1000) AS SIGNED);
+            SET v_Total_Points = v_Total_Points + CAST((v_Price * v_Qty * 0.10 / 1000) AS SIGNED);
         END IF;
     END LOOP;
     CLOSE cur_items;
@@ -190,8 +190,7 @@ BEGIN
     
     DECLARE v_Count INT;
     DECLARE v_Earned_Points INT DEFAULT 0;
-    DECLARE v_Discount_Value DECIMAL(10,2) DEFAULT 0;
-
+	DECLARE Discount_Value DECIMAL(10,2);
     -- Xử lý lỗi hệ thống
     DECLARE exit handler for sqlexception
     BEGIN
@@ -199,7 +198,7 @@ BEGIN
         RESIGNAL;
     END;
 
-    START TRANSACTION;
+    -- START TRANSACTION;
 
     -- 1. Lấy Room_ID
     SELECT Room_ID INTO v_Room_ID FROM SHOWTIME WHERE Showtime_ID = p_Showtime_ID;
@@ -243,14 +242,14 @@ BEGIN
         END WHILE;
     END IF;
     
-    IF p_Promo_Code IS NOT NULL AND p_Promo_Code != '' THEN
-        SET v_Discount_Value = Calculate_Valid_Discount(p_User_ID, p_Promo_Code);
-        IF v_Discount_Value <= 100 THEN
-            SET v_Total_Amount = v_Total_Amount - (v_Total_Amount * v_Discount_Value / 100);
-        ELSE
-            SET v_Total_Amount = v_Total_Amount - v_Discount_Value;
-        END IF;
-    END IF;
+    IF p_Promo_Code IS NOT NULL THEN
+		SET Discount_Value= Calculate_Valid_Discount(p_User_ID, p_Promo_Code);
+        IF Discount_Value <=100 THEN
+			SET v_Total_Amount = v_Total_Amount - (v_Total_Amount * Discount_Value/100);
+		ELSE 
+			SET v_Total_Amount = v_Total_Amount - Discount_Value;
+		END IF;
+	END IF;
 
     -- ==========================================
     -- BƯỚC 2: INSERT VÀO BẢNG CHÍNH (BOOKING)
@@ -303,7 +302,7 @@ BEGIN
         END IF;
     END IF;
 
-    COMMIT;
+    -- COMMIT;
 
     -- Trả về thông tin tóm tắt
     SELECT 
@@ -328,6 +327,148 @@ BEGIN
         Price, 
         Category 
     FROM FANDB_ITEM;
+END //
+
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE MyBooking(
+	IN p_User_ID INT
+    )
+BEGIN
+END//
+DELIMITER ;
+
+DELIMITER //
+
+DROP PROCEDURE IF EXISTS MyBooking //
+
+CREATE PROCEDURE MyBooking(
+    IN p_User_ID INT
+)
+BEGIN
+    SELECT 
+        b.Booking_ID,
+        b.Booking_Date,
+        CONCAT(FORMAT(b.Total_Amount, 0), ' VND') AS Total_Amount,
+        
+        -- 1. Tên Rạp (Complex Name)
+        COALESCE(
+            (SELECT GROUP_CONCAT(DISTINCT tc.Name SEPARATOR ', ') 
+             FROM TICKET t 
+             JOIN SHOWTIME st ON t.Showtime_ID = st.Showtime_ID
+             JOIN AUDITORIUM a ON st.Room_ID = a.Room_ID
+             JOIN THEATER_COMPLEX tc ON a.Complex_ID = tc.Complex_ID
+             WHERE t.Booking_ID = b.Booking_ID), 
+        'N/A') AS Theater,
+
+        -- 2. Tên Phòng (Room Name)
+        COALESCE(
+            (SELECT GROUP_CONCAT(DISTINCT a.Room_Name SEPARATOR ', ') 
+             FROM TICKET t 
+             JOIN SHOWTIME st ON t.Showtime_ID = st.Showtime_ID
+             JOIN AUDITORIUM a ON st.Room_ID = a.Room_ID
+             WHERE t.Booking_ID = b.Booking_ID), 
+        'N/A') AS Rooms,
+
+        -- 3. Danh sách ghế
+        COALESCE(
+            (SELECT GROUP_CONCAT(t.Seat_No ORDER BY t.Seat_No ASC SEPARATOR ', ') 
+             FROM TICKET t 
+             WHERE t.Booking_ID = b.Booking_ID), 
+        'N/A') AS Seats,
+        
+        -- 4. Đồ ăn
+        COALESCE(
+            (SELECT GROUP_CONCAT(CONCAT(fi.Name, ' (x', bf.Quantity, ')') SEPARATOR ', ') 
+             FROM BOOKING_FANDB bf 
+             JOIN FANDB_ITEM fi ON bf.Item_ID = fi.Item_ID 
+             WHERE bf.Booking_ID = b.Booking_ID), 
+        'Không có đồ ăn') AS FandB,
+
+        -- 5. Khuyến mãi
+        COALESCE(
+            (SELECT GROUP_CONCAT(p.Promotion_Name SEPARATOR ', ') 
+             FROM BOOKING_PROMO bp
+             JOIN PROMOTION_WALLET pw ON bp.Code = pw.Code
+             JOIN PROMOTION p ON pw.Promotion_ID = p.Promotion_ID
+             WHERE bp.Booking_ID = b.Booking_ID), 
+        'Không dùng mã') AS Promotion_Applied
+
+    FROM BOOKING b
+    WHERE b.User_ID = p_User_ID
+    ORDER BY b.Booking_Date DESC;
+END //
+DELIMITER ;
+
+DELIMITER //
+
+DROP PROCEDURE IF EXISTS MyAvailableBooking //
+
+CREATE PROCEDURE MyAvailableBooking(
+    IN p_User_ID INT
+)
+BEGIN
+    SELECT 
+        b.Booking_ID,
+        b.Booking_Date,
+        CONCAT(FORMAT(b.Total_Amount, 0), ' VND') AS Total_Amount,
+        
+        -- Tên Rạp
+        COALESCE(
+            (SELECT GROUP_CONCAT(DISTINCT tc.Name SEPARATOR ', ') 
+             FROM TICKET t 
+             JOIN SHOWTIME st ON t.Showtime_ID = st.Showtime_ID
+             JOIN AUDITORIUM a ON st.Room_ID = a.Room_ID
+             JOIN THEATER_COMPLEX tc ON a.Complex_ID = tc.Complex_ID
+             WHERE t.Booking_ID = b.Booking_ID), 
+        'N/A') AS Theater,
+
+        -- Tên Phòng
+        COALESCE(
+            (SELECT GROUP_CONCAT(DISTINCT a.Room_Name SEPARATOR ', ') 
+             FROM TICKET t 
+             JOIN SHOWTIME st ON t.Showtime_ID = st.Showtime_ID
+             JOIN AUDITORIUM a ON st.Room_ID = a.Room_ID
+             WHERE t.Booking_ID = b.Booking_ID), 
+        'N/A') AS Rooms,
+
+        -- Danh sách ghế
+        COALESCE(
+            (SELECT GROUP_CONCAT(t.Seat_No ORDER BY t.Seat_No ASC SEPARATOR ', ') 
+             FROM TICKET t 
+             WHERE t.Booking_ID = b.Booking_ID), 
+        'N/A') AS Seats,
+        
+        -- Đồ ăn
+        COALESCE(
+            (SELECT GROUP_CONCAT(CONCAT(fi.Name, ' (x', bf.Quantity, ')') SEPARATOR ', ') 
+             FROM BOOKING_FANDB bf 
+             JOIN FANDB_ITEM fi ON bf.Item_ID = fi.Item_ID 
+             WHERE bf.Booking_ID = b.Booking_ID), 
+        'Không có đồ ăn') AS FandB,
+
+        -- Khuyến mãi
+        COALESCE(
+            (SELECT GROUP_CONCAT(p.Promotion_Name SEPARATOR ', ') 
+             FROM BOOKING_PROMO bp
+             JOIN PROMOTION_WALLET pw ON bp.Code = pw.Code
+             JOIN PROMOTION p ON pw.Promotion_ID = p.Promotion_ID
+             WHERE bp.Booking_ID = b.Booking_ID), 
+        'Không dùng mã') AS Promotion_Applied
+
+    FROM BOOKING b
+    WHERE b.User_ID = p_User_ID
+      -- Lọc các booking có suất chiếu chưa bắt đầu
+      AND NOT EXISTS (
+          SELECT 1 
+          FROM TICKET t
+          JOIN SHOWTIME st ON t.Showtime_ID = st.Showtime_ID
+          WHERE t.Booking_ID = b.Booking_ID 
+            AND st.Start_Time <= NOW()
+      )
+      AND EXISTS (SELECT 1 FROM TICKET WHERE Booking_ID = b.Booking_ID)
+    ORDER BY b.Booking_Date ASC; 
 END //
 
 DELIMITER ;
