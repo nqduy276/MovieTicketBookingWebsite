@@ -193,3 +193,4 @@ auditorium is seeded with an 8×10 seat grid (Standard / VIP / Sweetbox).
 
 **Inspect API** — `http://localhost:8000/docs` (Swagger UI) or
 `http://localhost:8000/redoc`.
+hdihdw
